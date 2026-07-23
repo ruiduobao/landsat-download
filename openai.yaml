@@ -13,7 +13,7 @@ description: |
   Data source: Microsoft Planetary Computer (USGS Landsat Collection 2,
   public domain). Supports cloud-cover filter, WRS-2 path/row filter,
   band selection, safe .part temp writes, and visual progress (speed + ETA).
-version: 0.1.1
+version: 0.1.2
 author: rui.duobao
 license: MIT-0
 entrypoint: landsat-download.py

@@ -127,7 +127,7 @@ BAND_DESCRIPTIONS: Dict[str, Tuple[str, str]] = {
     "ang":     ("Angle Coefficients",             "角度系数"),
 }
 
-USER_AGENT = "landsat-download/0.1.0 (+https://clawhub.ai/skills/landsat-download)"
+USER_AGENT = "landsat-download/0.1.2 (+https://clawhub.ai/skills/landsat-download)"
 
 # Optional: requests trust_env to skip system proxies (avoids noisy
 # local VPN/proxy ports when the user is on a direct connection). Users who

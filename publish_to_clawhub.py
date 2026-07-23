@@ -63,7 +63,7 @@ def main() -> int:
 
     api = "https://clawhub.ai/api/v1"
     slug = "landsat-download"
-    version = "0.1.1"
+    version = "0.1.2"
 
     file_paths = collect_files(".")
     files_meta = [file_meta(p) for p in file_paths]
@@ -76,27 +76,17 @@ def main() -> int:
         "version": version,
         "license": "MIT-0",
         "changelog": (
-            "**v0.1.1: STAC-based Landsat 8/9 downloader — initial release + 3 bug fixes**\n\n"
-            "Features:\n"
-            "- Search and download Landsat 8/9 Collection 2 Level 2 imagery via STAC\n"
-            "- Default backend: Microsoft Planetary Computer (public, no auth)\n"
-            "- Optional backend: AWS Earth Search (Element84)\n"
-            "- Bilingual CLI (zh + en) with WRS-2 path/row, cloud-cover, band selection\n"
-            "- Safe .part file writes (atomic rename, never overwrites existing)\n"
-            "- Visual progress bar with speed + ETA\n"
-            "- JSON + text output formats\n"
-            "- Privacy notice + LANDSAT_DOWNLOAD_QUIET=1 opt-out env var\n\n"
-            "Bug fixes (vs initial dev):\n"
-            "- AWS STAC: don't send `sortby: datetime` (index lacks the field → 400)\n"
-            "- `download_asset` skip-existing: print one-line stderr notice\n"
-            "- E2E test path: `rglob('*.tif')` to find files at the scene_id level\n\n"
+            "**v0.1.2: remove hardcoded proxy port references, clarify docs**\n\n"
+            "Changes:\n"
+            "- Removed hardcoded 7897 port references from code and docs\n"
+            "- Proxy feature preserved via LANDSAT_DOWNLOAD_USE_PROXY=1 (default: direct)\n"
+            "- SKILL.md: clarified proxy env var description\n"
+            "- publish_to_clawhub.py: use trust_env=False by default\n\n"
             "Tests:\n"
-            "- 41 unit tests (mocked network): all pass\n"
-            "- 20 e2e test cases against real Planetary Computer: all pass\n\n"
-            "中文：通过 STAC 搜索和下载 Landsat 8/9 Collection 2 Level 2 影像；"
-            "默认后端 Planetary Computer 公开无需账号；支持 WRS-2 路径/行、"
-            "云量过滤、单波段选择、`.part` 安全写入、可视化进度条；"
-            "隐私告示 + 一次性 quiet 关闭。"
+            "- 41 unit tests: all pass\n"
+            "- 2 integration tests (real Planetary Computer): all pass\n\n"
+            "中文：移除代码和文档中硬编码的 7897 端口引用；"
+            "保留代理功能（LANDSAT_DOWNLOAD_USE_PROXY=1 启用，默认直连）。"
         ),
         "tags": [
             "gis", "remote-sensing", "landsat", "stac", "planetary-computer",

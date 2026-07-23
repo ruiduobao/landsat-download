@@ -1,7 +1,7 @@
 ---
 name: landsat-download
 display_name: Landsat Downloader
-version: 0.1.1
+version: 0.1.2
 author: rui.duobao
 license: MIT-0
 description: |
