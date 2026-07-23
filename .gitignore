@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+.eggs/
+
+# Pytest
+.pytest_cache/
+.pytest_cache/**
+htmlcov/
+.coverage
+.coverage.*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Virtual env
+venv/
+env/
+.venv/
+
+# Build / dist
+build/
+dist/
+*.spec
+
+# Landsat download output (don't accidentally commit downloaded scenes)
+landsat_data/
+data/LC*
+data/LT*
+data/LO*
+data/*.tif
+data/*.TIF
+data/*.tiff
+
+# Test fixtures and scratch
+data/_*.json
+data/_*.html
+data/_*.txt
+
+# End-to-end test runner + scratch (kept locally; not part of the skill)
+_test_dl_20/
+e2e_test.log
+
