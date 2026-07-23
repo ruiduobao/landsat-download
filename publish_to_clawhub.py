@@ -74,6 +74,7 @@ def main() -> int:
         "slug": slug,
         "displayName": "Landsat Downloader",
         "version": version,
+        "license": "MIT-0",
         "changelog": (
             "**v0.1.1: STAC-based Landsat 8/9 downloader — initial release + 3 bug fixes**\n\n"
             "Features:\n"
