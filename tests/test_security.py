@@ -79,7 +79,7 @@ def test_user_agent_identifies_skill():
 
 
 def test_trust_env_default_disabled():
-    """trust_env defaults to False to avoid 7897 / system proxy interference."""
+    """trust_env defaults to False to avoid system proxy interference."""
     # The default value is read at import time, so we just check the env
     # is consulted. If user has not set LANDSAT_DOWNLOAD_USE_PROXY=1,
     # the default is False.

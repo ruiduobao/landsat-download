@@ -129,9 +129,9 @@ BAND_DESCRIPTIONS: Dict[str, Tuple[str, str]] = {
 
 USER_AGENT = "landsat-download/0.1.0 (+https://clawhub.ai/skills/landsat-download)"
 
-# Optional: requests trust_env to skip system proxies (avoids 7897 noise
-# when the user is on a direct connection). Users who NEED the proxy can
-# set LANDSAT_DOWNLOAD_USE_PROXY=1 to fall back to env defaults.
+# Optional: requests trust_env to skip system proxies (avoids noisy
+# local VPN/proxy ports when the user is on a direct connection). Users who
+# NEED the proxy can set LANDSAT_DOWNLOAD_USE_PROXY=1 to fall back to env defaults.
 DEFAULT_TRUST_ENV = os.environ.get("LANDSAT_DOWNLOAD_USE_PROXY") == "1"
 
 # SAS token cache: collection → (token, expires_at_epoch_seconds)

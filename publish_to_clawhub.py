@@ -108,12 +108,16 @@ def main() -> int:
     print(f"Payload size: {len(payload_str)/1e3:.1f} KB")
 
     mp_files = [("payload", (None, payload_str, "application/json"))]
+    mp_files.append(("accept_license_terms", (None, "true", "text/plain")))
     for p in file_paths:
         mp_files.append(("files", (p, open(p, "rb"),
                                     mimetypes.guess_type(p)[0] or "application/octet-stream")))
 
     print("Uploading...")
-    r = requests.post(
+    session = requests.Session()
+    if os.environ.get("CLAWHUB_USE_PROXY") != "1":
+        session.trust_env = False
+    r = session.post(
         f"{api}/skills",
         headers={"Authorization": f"Bearer {token}"},
         files=mp_files,

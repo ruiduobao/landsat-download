@@ -273,7 +273,7 @@ $ python landsat-download.py --bbox 116.0 39.0 117.0 40.0 --start-date 2024-01-0
   - `https://earth-search.aws.element84.com`（可选后端）
   - 默认**直连**。通过 `LANDSAT_DOWNLOAD_USE_PROXY=1` 走系统代理。
 - **环境变量读取**：
-  - `LANDSAT_DOWNLOAD_USE_PROXY=1` — 走系统代理
+  - `LANDSAT_DOWNLOAD_USE_PROXY=1` — 启用系统代理（默认直连，不走代理）
   - `LANDSAT_DOWNLOAD_QUIET=1` — 同时关闭进度条 + 隐私告示
   - `LANDSAT_DOWNLOAD_NO_STAC=1` — 跳过 STAC 搜索（仅用于已经预签名的资产列表）
   - `LANDSAT_DOWNLOAD_OUTPUT_DIR` — 覆盖默认 `--output-dir`
