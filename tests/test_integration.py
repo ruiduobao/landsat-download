@@ -56,7 +56,13 @@ def test_real_stac_search_returns_scene():
 def test_real_list_bands_endpoint():
     """The Planetary Computer collection definition should have our asset keys."""
     import requests
-    r = requests.get(
+    session = requests.Session()
+    # Match the main script's proxy behaviour: bypass system proxy by default
+    # (LANDSAT_DOWNLOAD_USE_PROXY=1 to enable). This avoids proxy-related
+    # SSL errors when the test runs behind a VPN.
+    if os.environ.get("LANDSAT_DOWNLOAD_USE_PROXY") != "1":
+        session.trust_env = False
+    r = session.get(
         "https://planetarycomputer.microsoft.com/api/stac/v1/collections/landsat-c2-l2",
         timeout=30,
     )
