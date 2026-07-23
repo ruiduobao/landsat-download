@@ -52,4 +52,5 @@ data/_*.txt
 # End-to-end test runner + scratch (kept locally; not part of the skill)
 _test_dl_20/
 e2e_test.log
+_pub.txt
 
