@@ -1,0 +1,3 @@
+description: 通过 STAC 搜索和下载 Landsat 8 / Landsat 9 Collection 2 Level 2 影像。
+display_name: Landsat Download
+name: landsat-download
