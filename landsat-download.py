@@ -66,6 +66,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
+# Local helper: --place resolution (vendored copy of _place_resolver.py)
+try:
+    from _place import resolve_place as _resolve_place
+except ImportError:  # pragma: no cover
+    def _resolve_place(*_a, **_kw):  # type: ignore
+        raise RuntimeError("place resolution helper (_place.py) not available in this folder")
+
 
 # ---------------------------------------------------------------------------
 # STAC endpoints
@@ -127,7 +134,178 @@ BAND_DESCRIPTIONS: Dict[str, Tuple[str, str]] = {
     "ang":     ("Angle Coefficients",             "角度系数"),
 }
 
-USER_AGENT = "landsat-download/0.1.2 (+https://clawhub.ai/skills/landsat-download)"
+USER_AGENT = "landsat-download/0.2.0 (+https://clawhub.ai/skills/landsat-download)"
+
+
+# ---------------------------------------------------------------------------
+# Presets / 日期预设
+# ---------------------------------------------------------------------------
+# 用户最常见的一句话任务，例如：
+#   "成都市 2024 年夏季低云量 Landsat 9 影像"
+#   "2024 年冬季北京市 NDVI 影像"
+#   "2023 年成都市全年低云 Landsat 9 影像"
+#
+# 一个 preset 自动展开为：start_date / end_date / platform / max_cloud_cover / bands
+# 用户仍可用 --start-date / --max-cloud-cover 等显式覆盖。
+#
+# 说明：以下日期使用 Northern-Hemisphere 季节（适合绝大多数中国用户）；
+#      南半球用户请用 --start-date / --end-date 显式指定。
+
+PRESETS: Dict[str, Dict[str, Any]] = {
+    "summer-2024": {
+        "description": "2024 年夏季 (6-8 月) Landsat 8+9 全场景 / 2024 Northern-Hemisphere summer (Jun-Aug)",
+        "start_date": "2024-06-01",
+        "end_date": "2024-08-31",
+        "platform": "both",
+        "max_cloud_cover": 20.0,
+    },
+    "winter-2024": {
+        "description": "2024 年冬季 (12-2 月) Landsat 8+9 / 2024 Northern-Hemisphere winter (Dec-Feb)",
+        "start_date": "2023-12-01",
+        "end_date": "2024-02-29",
+        "platform": "both",
+        "max_cloud_cover": 20.0,
+    },
+    "annual-2024": {
+        "description": "2024 年全年 Landsat 8+9 / 2024 full year",
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "platform": "both",
+        "max_cloud_cover": 30.0,
+    },
+    "low-cloud-10": {
+        "description": "近 1 年 (rolling 365d) 内云量 ≤10% 的低云量场景 / lowest cloud cover, rolling 1 year",
+        "start_date": None,  # main() 动态计算为今天 - 365 天
+        "end_date": None,
+        "platform": "both",
+        "max_cloud_cover": 10.0,
+    },
+    "ndvi-ready": {
+        "description": "NDVI 所需波段 (red + nir08 + qa)，低云量夏季 / bands for NDVI",
+        "start_date": None,  # main() 默认填近 1 年
+        "end_date": None,
+        "platform": "both",
+        "max_cloud_cover": 20.0,
+        "bands": ["red", "nir08", "qa"],
+    },
+    "rgb-ready": {
+        "description": "真彩色 RGB 影像 (red + green + blue) / natural color",
+        "start_date": None,
+        "end_date": None,
+        "platform": "both",
+        "max_cloud_cover": 20.0,
+        "bands": ["red", "green", "blue"],
+    },
+    "thermal-lst": {
+        "description": "地表温度 (LST) 所需波段 (lwir11 + qa) / thermal for LST",
+        "start_date": None,
+        "end_date": None,
+        "platform": "both",
+        "max_cloud_cover": 20.0,
+        "bands": ["lwir11", "qa"],
+    },
+}
+
+# 季节展开（用户说 "summer" 自动展开为 6-8 月）
+SEASON_MONTHS: Dict[str, Tuple[int, int]] = {
+    "spring": (3, 5),
+    "summer": (6, 8),
+    "autumn": (9, 11),
+    "fall": (9, 11),
+    "winter": (12, 2),  # 跨年特殊处理
+}
+
+
+def _auto_buffer_for_place(place_name: str) -> float:
+    """Heuristic auto buffer (degrees) for a Chinese place-name.
+
+    Landsat scene is ~185 km wide (≈1.67° at equator). 0.1° is too small for
+    a city — usually returns 0 scenes. We use admin-level heuristics:
+
+    * ends with "省"/"自治区"/"盟" → 5.0°  (province)
+    * ends with "市" (prefecture-level) → 0.6°  (covers a city + outskirts)
+    * ends with "区" (district) → 0.15°
+    * ends with "县" (county) → 0.4°
+    * otherwise → 0.3°
+    """
+    if not place_name:
+        return 0.3
+    name = place_name.strip()
+    if name.endswith(("省", "自治区")) or "省" in name[-3:]:
+        return 5.0
+    if name.endswith("市"):
+        return 0.6
+    if name.endswith("区"):
+        return 0.15
+    if name.endswith(("县", "旗")):
+        return 0.4
+    return 0.3
+
+
+def apply_preset(args: argparse.Namespace) -> argparse.Namespace:
+    """Apply --preset (and optional --year/--season) to fill in date / cloud / bands.
+
+    Priority (lowest → highest):
+      preset defaults  <  user-provided --start-date / --end-date / --max-cloud-cover
+    """
+    if not (args.preset or args.season or args.year):
+        return args
+
+    today = time.strftime("%Y-%m-%d")
+
+    # 1) --preset
+    if args.preset:
+        if args.preset not in PRESETS:
+            valid = ", ".join(sorted(PRESETS.keys()))
+            raise SystemExit(f"ERROR: --preset must be one of: {valid}")
+        spec = PRESETS[args.preset]
+        # 只有用户没显式给才覆盖
+        if not args.start_date:
+            args.start_date = spec.get("start_date") or (today if spec.get("end_date") is None else None)
+        if not args.end_date:
+            args.end_date = spec.get("end_date") or today
+        if args.max_cloud_cover is None:
+            mc = spec.get("max_cloud_cover")
+            if mc is not None:
+                args.max_cloud_cover = float(mc)
+        # platform / bands：用户没显式给才覆盖
+        if args.platform == "both" and "platform" in spec:
+            args.platform = spec["platform"]
+        if args.bands == DEFAULT_BANDS and "bands" in spec:
+            args.bands = spec["bands"]
+        # rolling 1 year 默认
+        if args.preset == "low-cloud-10" and (not args.start_date or not args.end_date):
+            t = time.time()
+            args.end_date = today
+            args.start_date = time.strftime("%Y-%m-%d", time.gmtime(t - 365 * 24 * 3600))
+
+    # 2) --year + --season 组合（先 season，更精确）
+    if args.season and args.year and not args.start_date:
+        s = args.season.lower()
+        if s not in SEASON_MONTHS:
+            raise SystemExit(f"ERROR: --season must be one of: {', '.join(sorted(SEASON_MONTHS.keys()))}")
+        m1, m2 = SEASON_MONTHS[s]
+        y = args.year
+        if m1 <= m2:
+            args.start_date = f"{y}-{m1:02d}-01"
+            # 算下个月第一天 - 1 天
+            import calendar
+            last_day = calendar.monthrange(y, m2)[1]
+            args.end_date = f"{y}-{m2:02d}-{last_day}"
+        else:  # winter 跨年
+            args.start_date = f"{y}-{m1:02d}-01"
+            import calendar
+            last_day = calendar.monthrange(y + 1, m2)[1]
+            args.end_date = f"{y + 1}-{m2:02d}-{last_day}"
+
+    # 3) --year 单独使用（仅当 start_date 仍未填）
+    if args.year and not args.start_date:
+        y = args.year
+        args.start_date = f"{y}-01-01"
+        args.end_date = f"{y}-12-31"
+
+    return args
+
 
 # Optional: requests trust_env to skip system proxies (avoids noisy
 # local VPN/proxy ports when the user is on a direct connection). Users who
@@ -554,11 +732,77 @@ def build_parser() -> argparse.ArgumentParser:
                    help="List all available bands and exit / 列出所有波段")
     p.add_argument("--quiet", action="store_true",
                    help="Suppress progress + privacy notice (also LANDSAT_DOWNLOAD_QUIET=1)")
+    p.add_argument(
+        "--place",
+        help="Place name (Chinese or English). Auto-resolved to bbox via Open-Meteo + Nominatim. "
+             "Mutually exclusive with --bbox / 行政地名 (自动解析为 bbox)",
+    )
+    p.add_argument(
+        "--place-buffer-deg",
+        type=float,
+        default=None,
+        help="Buffer (degrees) added around the resolved point when --place is used. "
+             "Default auto: city=0.5°, district=0.15°, province=4°. "
+             "Use this to override the auto value / 围绕地名的 bbox 缓冲（度）。",
+    )
+    p.add_argument(
+        "--no-nominatim",
+        action="store_true",
+        help="Skip Nominatim lookup in --place resolution / --place 解析时跳过 Nominatim",
+    )
+    p.add_argument(
+        "--qa",
+        metavar="PATH",
+        help="Write a JSON QA summary to PATH. "
+             "By default implies --download (full QA includes download stats). "
+             "Use --qa-mode search to write only search results without downloading. / 写出 QA 摘要 JSON",
+    )
+    p.add_argument(
+        "--qa-mode",
+        choices=["search", "full"],
+        default="full",
+        help="What to record in --qa. 'search' = just search meta (no download). "
+             "'full' = search + download stats (implies --download). Default: full.",
+    )
+    p.add_argument(
+        "--preset",
+        choices=sorted(PRESETS.keys()),
+        help="One-line preset (auto-fills date / platform / cloud / bands). "
+             f"Available: {', '.join(sorted(PRESETS.keys()))}. "
+             "显式给出的 --start-date / --max-cloud-cover 等参数会覆盖 preset 默认值。",
+    )
+    p.add_argument(
+        "--year",
+        type=int,
+        help="Shortcut for full-year search: --year 2024 → --start-date 2024-01-01 --end-date 2024-12-31. "
+             "与 --season 组合：--year 2024 --season summer → 2024-06-01..2024-08-31.",
+    )
+    p.add_argument(
+        "--season",
+        choices=sorted(SEASON_MONTHS.keys()),
+        help="Northern-Hemisphere season (需配合 --year). e.g. --year 2024 --season summer.",
+    )
+    p.add_argument(
+        "--pick-best",
+        action="store_true",
+        help="After searching, only download the single scene with the lowest cloud cover. "
+             "Useful for '找一个最清晰的' workflows. / 仅下载云量最低的一景",
+    )
     return p
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
+
+    # Apply --preset / --year / --season BEFORE --list-bands
+    # (presets may also affect --bands default)
+    try:
+        args = apply_preset(args)
+    except SystemExit:
+        raise
+    except Exception as e:
+        print(f"ERROR: --preset expansion failed: {e}", file=sys.stderr)
+        return 2
 
     # --list-bands
     if args.list_bands:
@@ -570,7 +814,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # Required args check
     missing = []
-    if not args.bbox: missing.append("--bbox")
+    if not args.bbox and not args.place: missing.append("--bbox or --place")
     if not args.start_date: missing.append("--start-date")
     if not args.end_date: missing.append("--end-date")
     if missing:
@@ -581,6 +825,35 @@ def main(argv: Optional[List[str]] = None) -> int:
     # --quiet on CLI overrides env
     if args.quiet:
         os.environ["LANDSAT_DOWNLOAD_QUIET"] = "1"
+
+    # Resolve --place to bbox if given
+    place_info: Optional[Dict[str, Any]] = None
+    if args.place:
+        if args.bbox:
+            print("ERROR: --place and --bbox are mutually exclusive; pick one.", file=sys.stderr)
+            return 2
+        try:
+            place_info = _resolve_place(args.place, allow_nominatim=not args.no_nominatim)
+        except Exception as e:
+            print(f"ERROR: --place resolution failed: {e}", file=sys.stderr)
+            return 2
+        # Auto buffer by admin-level heuristics (省/市/区/县)
+        buf = args.place_buffer_deg if args.place_buffer_deg is not None else _auto_buffer_for_place(args.place)
+        w = place_info["lon"] - buf
+        e = place_info["lon"] + buf
+        s = place_info["lat"] - buf
+        n = place_info["lat"] + buf
+        args.bbox = [w, s, e, n]
+        # Save the actual buffer used in place_info for QA
+        place_info["buffer_deg_used"] = buf
+        if not _quiet():
+            print(f"[landsat-download] place: {place_info.get('display_name') or args.place}", file=sys.stderr)
+            print(f"[landsat-download] resolved to bbox {args.bbox} (buffer {buf}°)", file=sys.stderr)
+            print(f"[landsat-download] geocoder source: {place_info.get('source')}", file=sys.stderr)
+
+    # --qa implies --download only in 'full' mode
+    if args.qa and args.qa_mode == "full":
+        args.download = True
 
     bbox = tuple(args.bbox)
     query_meta = {
@@ -620,6 +893,22 @@ def main(argv: Optional[List[str]] = None) -> int:
     features = resp.get("features", [])
     query_meta["returned"] = len(features)
 
+    # --pick-best: 仅保留云量最低的一景
+    if args.pick_best and features:
+        def _cloud(f):
+            try:
+                return float(f.get("properties", {}).get("eo:cloud_cover", 1e9))
+            except (TypeError, ValueError):
+                return 1e9
+        features_sorted = sorted(features, key=_cloud)
+        best = features_sorted[0]
+        cc = _cloud(best)
+        if not _quiet():
+            print(f"[landsat-download] --pick-best: chose 1 scene with cloud cover = {cc}%",
+                  file=sys.stderr)
+        features = [best]
+        query_meta["picked"] = {"id": best.get("id"), "cloud_cover": cc}
+
     # Output search results
     if args.output_format == "json":
         print(format_results_json(query_meta, features))
@@ -639,6 +928,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # Download?
     if not args.download:
+        # search-only QA: still write QA even if not downloading
+        if args.qa and args.qa_mode == "search":
+            _write_qa(args, query_meta, features, place_info, total_bytes=0, elapsed=0.0)
+            if not _quiet():
+                print(f"[landsat-download] wrote search-only QA to {args.qa}", file=sys.stderr)
         if not _quiet():
             print("\n[landsat-download] search done. Add --download to fetch.",
                   file=sys.stderr)
@@ -680,7 +974,68 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"\n[landsat-download] done in {elapsed:.0f}s — "
               f"downloaded {_human_bytes(total_bytes)} across {len(features)} scene(s)",
               file=sys.stderr)
+
+    # Optional QA summary
+    if args.qa:
+        try:
+            _write_qa(args, query_meta, features, place_info, total_bytes, elapsed)
+            if not _quiet():
+                print(f"[landsat-download] wrote QA summary to {args.qa}", file=sys.stderr)
+        except Exception as e:
+            print(f"ERROR: --qa write failed: {e}", file=sys.stderr)
+            return 3
+
     return 0 if overall_ok else 1
+
+
+def _write_qa(args, query_meta, features, place_info, total_bytes, elapsed):
+    """Write QA JSON to args.qa (called from search-only or full mode)."""
+    qa = {
+        "skill": "landsat-download",
+        "version": "0.2.0",
+        "query": {
+            "bbox": list(query_meta.get("bbox") or []),
+            "start_date": args.start_date,
+            "end_date": args.end_date,
+            "max_cloud_cover": args.max_cloud_cover,
+            "platform": args.platform,
+            "path": args.path,
+            "row": args.row,
+            "bands": args.bands,
+            "source": args.source,
+            "place": (
+                {
+                    "query": place_info.get("query") if place_info else None,
+                    "display_name": place_info.get("display_name") if place_info else None,
+                    "source": place_info.get("source") if place_info else None,
+                    "buffer_deg": place_info.get("buffer_deg_used") if place_info else None,
+                }
+                if place_info
+                else None
+            ),
+            "preset": args.preset,
+            "year": args.year,
+            "season": args.season,
+            "pick_best": args.pick_best,
+        },
+        "searched": len(features),
+        "picked": query_meta.get("picked"),
+        "downloaded": sum(1 for f in features if f.get("_ok", True)),
+        "failed": sum(1 for f in features if not f.get("_ok", True)),
+        "total_bytes": total_bytes,
+        "elapsed_seconds": round(elapsed, 1),
+        "scenes": [
+            {
+                "id": f.get("id"),
+                "datetime": f.get("properties", {}).get("datetime"),
+                "cloud_cover": f.get("properties", {}).get("eo:cloud_cover"),
+                "platform": f.get("properties", {}).get("platform"),
+            }
+            for f in features
+        ],
+    }
+    with open(args.qa, "w", encoding="utf-8") as f:
+        json.dump(qa, f, ensure_ascii=False, indent=2)
 
 
 if __name__ == "__main__":
