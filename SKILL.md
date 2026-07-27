@@ -1,29 +1,6 @@
 ---
-description: '通过 STAC 搜索和下载 Landsat 8 / Landsat 9 Collection 2 Level 2 影像。
-
-  默认后端是 Microsoft Planetary Computer（公开数据，无需账号）。
-
-  支持云量过滤、WRS-2 路径/行过滤、单波段选择、安全的 .part 临时文件写入
-
-  以及可视化下载进度（速度 + ETA）。
-
-  Use for Landsat 8/9 imagery search by bounding box / date / cloud cover,
-
-  asset selection (SR_B1..SR_B7, ST_B10, QA_PIXEL, QA_RADSAT), and large-file
-
-  downloads with visual progress.
-
-
-  English: STAC-based Landsat 8/9 Collection 2 Level 2 downloader.
-
-  Data source: Microsoft Planetary Computer (USGS Landsat Collection 2,
-
-  public domain). Supports cloud-cover filter, WRS-2 path/row filter,
-
-  band selection, safe .part temp writes, and visual progress (speed + ETA).
-
-  '
 name: landsat-download
+description: '通过 STAC 搜索和下载 Landsat 8 / Landsat 9 Collection 2 Level 2 影像。 description: '通过 STAC 搜索和下载 Landsat 8 / Landsat 9 Collection 2 Level 2 影像。  默认后端是 Microsoft Planetary Computer（公开数据，无需账号）。  支持云量过滤、WRS-2 路径/行过滤、单波段选择、安全的 .part 临时文件写入  以及可视化下载进度（速度 + ETA）。  Use for Landsat 8/9 imagery search by bounding box / date / cloud cover,  asset selection (SR_B1..SR_B7, ST_B10, QA_PIXEL, QA_RADSAT), and large-file  downloads with visual progress.   English: STAC-based Landsat 8/9 Collection 2 Level 2 downloader.  Data source: Microsoft Planetary Computer (USGS Landsat Collection 2,  public domain). Supports cloud-cover filter, WRS-2 path/row filter,  band selection, safe .part temp writes, and visual progress (speed + ETA).  '
 ---
 
 # Landsat Downloader | Landsat 8/9 影像下载器
